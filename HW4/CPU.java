@@ -14,7 +14,7 @@ import org.omg.CosNaming.IstringHelper;
  * @see Program
  * @see Sim
  * 
- * @authors harber14, schwalbe15
+ * @authors harber14, hollandm15
  */
 
 public class CPU
@@ -60,10 +60,11 @@ public class CPU
     //======================================================================
     //Member variables
     //----------------------------------------------------------------------
+    
     /**
      * specifies whether the CPU should output details of its work
      **/
-    private boolean m_verbose = true;
+    private boolean m_verbose = false;
 
     /**
      * This array contains all the registers on the "chip".
@@ -77,6 +78,12 @@ public class CPU
      **/
     private RAM m_RAM = null;
     
+    /**
+     * a reference to the trap handler for this CPU.  On a real CPU this would
+     * simply be an address that the PC register is set to.
+     */
+    private TrapHandler m_TH = null;
+    
     //======================================================================
     //Methods
     //----------------------------------------------------------------------
@@ -84,7 +91,7 @@ public class CPU
     /**
      * CPU ctor
      *
-     * Initializes all member variables.
+     * Intializes all member variables.
      */
     public CPU(RAM ram)
     {
@@ -205,44 +212,6 @@ public class CPU
         System.out.println("");
     }//regDump
 
-    //======================================================================
-    //Callback Interface
-    //----------------------------------------------------------------------
-    /**
-     * TrapHandler
-     *
-     * This interface should be implemented by the operating system to allow the
-     * simulated CPU to generate hardware interrupts and system calls.
-     */
-    public interface TrapHandler
-    {
-        void interruptIllegalMemoryAccess(int addr);
-        void interruptDivideByZero();
-        void interruptIllegalInstruction(int[] instr);
-        void systemCall();
-    };//interface TrapHandler
-
-
-    
-    /**
-     * a reference to the trap handler for this CPU.  On a real CPU this would
-     * simply be an address that the PC register is set to.
-     */
-    private TrapHandler m_TH = null;
-
-
-    /**
-     * registerTrapHandler
-     *
-     * allows SOS to register itself as the trap handler 
-     */
-    public void registerTrapHandler(TrapHandler th)
-    {
-        m_TH = th;
-    }
-    
-    
-    
     /**
      * printIntr
      *
@@ -295,7 +264,7 @@ public class CPU
                     System.out.println("SAVE R" + instr[1] + " --> @R" + instr[2]);
                     break;
                 case TRAP:
-                    System.out.print("TRAP ");
+                    System.out.println("TRAP ");
                     break;
                 default:        // should never be reached
                     System.out.println("?? ");
@@ -313,9 +282,10 @@ public class CPU
      * @return returns the value retrieved from the stack 
      */
     public int pop(){
-        int temp = m_RAM.read(getSP()); //read the value at the top of the stack 
-        setSP(getSP()- 1); //Decrement stack pointer to "remove" that item from the stack.
-        return temp; //return the value that was retrieved from the top of the stack
+    	//read the value at the top of the stack and store in temp variable
+    	int temp = m_RAM.read(getSP());
+    	setSP(getSP()- 1); //Decrement stack pointer to "remove" that item from the stack.
+    	return temp; //return the value that was retrieved from the top of the stack
     }
     
     
@@ -327,10 +297,10 @@ public class CPU
      * @param value to be pushed onto the stack 
      */
     public void push(int val){
-        setSP(getSP() +1); //increment SP (to "add" a new entry to the stack)
-        
-        //The value of this new entry is set equal to the value of the register
-        m_RAM.write(getSP(), val); 
+    	setSP(getSP() +1); //increment SP (to "add" a new entry to the stack)
+    	
+    	//The value of this new entry is set equal to the value of the register
+    	m_RAM.write(getSP(), val); 
     }
 
     /**
@@ -342,10 +312,10 @@ public class CPU
      * @return true if value is in range, false if value out of bounds
      */
     public boolean isMemAddressInRange(int value){
-        if(value < getLIM() + getBASE() && value >= getBASE())
-            return true; //memory address in range
-        
-        return false; //memory address not in range
+    	if(value < getLIM() + getBASE() && value >= getBASE())
+    		return true; //indicates memory address in range
+    	
+    	return false; //indicates memory address not in range
     }
     
     /**
@@ -360,107 +330,189 @@ public class CPU
      */
     public void run()
     {
-        int instruction[]; //Holds the current instruction from the executing program
-        
-            while(true){
-                
-                //Fetch the next instruction from RAM 
-                instruction = m_RAM.fetch(getPC()); 
-                
-                if(m_verbose){
-                    regDump(); //debug method
-                    printInstr(instruction); //debug method
-                }
+		int instruction[]; //Holds the current instruction from the executing program
+		
+    		//while we are still in allowed address space
+    		while(true){
+    			
+    			//Fetch the next instruction from RAM using the PC register
+    			instruction = m_RAM.fetch(getPC()); 
+    			
+    			//if verbose mode on
+    			if(m_verbose){
+    				regDump(); //call debugging method
+    				printInstr(instruction); //call debugging method
+    			}
 
-                switch(instruction[0]){
+    			switch(instruction[0])
+                {
                     case SET:
-                        m_registers[instruction[1]] = instruction[2];
-                        break;
-                        
+                    	//The value of the register specified by arg1 is set to 
+                    	//the value specified in arg2.
+                    	m_registers[instruction[1]] = instruction[2];
+                    	break;
+                    	
                     case ADD:
-                        m_registers[instruction[1]] = m_registers[instruction[2]] + m_registers[instruction[3]];
+                       //The value of the register specified by arg1 is set to 
+                    	//the sum of the values of the registers specified by arg2 and arg3.
+                    	m_registers[instruction[1]] = m_registers[instruction[2]] + m_registers[instruction[3]];
                         break;
                         
                     case SUB:
-                        m_registers[instruction[1]] = m_registers[instruction[2]] - m_registers[instruction[3]];
+                    	//The value of the register specified by arg1 is set to the difference 
+                    	//that results when the value of the register specified by arg3 is subtracted
+                    	//from the value of the register specified by arg2.
+                    	m_registers[instruction[1]] = m_registers[instruction[2]] - m_registers[instruction[3]];
                         break;
                         
                     case MUL:
-                        m_registers[instruction[1]] = m_registers[instruction[2]] * m_registers[instruction[3]];
+                    	//The value of the register specified by arg1 is set to the product of 
+                    	//the values of the registers specified by arg2 and arg3.
+                    	m_registers[instruction[1]] = m_registers[instruction[2]] * m_registers[instruction[3]];
                         break;
                         
-                    case DIV: 
-                        //check for divide by zero error
-                        if(m_registers[instruction[3]] == 0){
-                            m_TH.interruptDivideByZero(); 
-                            }
-                        
-                        m_registers[instruction[1]] = m_registers[instruction[2]] / m_registers[instruction[3]];
+                    case DIV:
+                    	//The value of the register specified by arg1 is set to the quotient 
+                    	//that results when the value of the register specified arg2 is divided 
+                    	//by the value of the register specified by arg3
+                    	
+                    	//check for divide by zero error
+                    	if(m_registers[instruction[3]] == 0){
+                    		m_TH.interruptDivideByZero();
+                    	}
+                    	
+                    	m_registers[instruction[1]] = m_registers[instruction[2]] / m_registers[instruction[3]];
                         break;
                         
                     case COPY:
-                        m_registers[instruction[1]] = m_registers[instruction[2]];
+                    	//The value of the register specified by arg2 is copied into the 
+                    	//register specified by arg1.
+                    	m_registers[instruction[1]] = m_registers[instruction[2]];
                         break;
                         
                     case BRANCH:
-                        if(!isMemAddressInRange(instruction[1]+getBASE()))
-                            m_TH.interruptIllegalMemoryAccess(instruction[1]+getBASE());
-                        
-                        setPC(instruction[1]+getBASE() - INSTRSIZE);
+                    	//Check that specified branch address is in memory bounds
+                    	if(!isMemAddressInRange(instruction[1]+getBASE()))
+                    		m_TH.interruptIllegalMemoryAccess(instruction[1]+getBASE());
+                    	
+                    	//The program counter is set to the specified address. 
+                    	setPC(instruction[1]+getBASE() - 4);
+                    	//Must decrement by 4 since we increment @ end of switch statement
+                    	//This ensures we branch and execute the specified instruction
                         break;
                         
                     case BNE:
-                        if(!isMemAddressInRange(instruction[3]+getBASE()))
-                            m_TH.interruptIllegalMemoryAccess(instruction[3]+getBASE());
-
-                        if(m_registers[instruction[1]] != m_registers[instruction[2]])
-                            setPC(instruction[3]+getBASE() - INSTRSIZE);
+                    	//Check that PC address is in memory bounds
+                    	if(!isMemAddressInRange(instruction[3]+getBASE()))
+                    		m_TH.interruptIllegalMemoryAccess(instruction[1]+getBASE());
+                    	
+                    	//If the value of the register specified by arg1 is not equal to 
+                    	//the value of the register specified by arg2 then the value of 
+                    	//the program counter is set to the address specified in arg3.
+                    	if(m_registers[instruction[1]] != m_registers[instruction[2]])
+                    		setPC(instruction[3]+getBASE() - 4);
+                    	//Must decrement by 4 since we increment @ end of switch statement
+                    	//This ensures we branch and execute the specified instruction
                         break;
                         
                     case BLT:
-                        if(!isMemAddressInRange(instruction[3]+getBASE()))
-                            m_TH.interruptIllegalMemoryAccess(instruction[3]+getBASE());
-                        
-                        if(m_registers[instruction[1]] < m_registers[instruction[2]])
-                            setPC(instruction[3]+getBASE() - INSTRSIZE); 
+                    	//Check that PC address is in memory bounds
+                    	if(!isMemAddressInRange(instruction[3]+getBASE()))
+                    		m_TH.interruptIllegalMemoryAccess(instruction[1]+getBASE());
+                    	
+                    	//If the value of the register specified by arg1 is less than 
+                    	//the value of the register specified by arg2 then the value 
+                    	//of the program counter is set to the address specified in arg3.
+                    	if(m_registers[instruction[1]] < m_registers[instruction[2]])
+                    		setPC(instruction[3]+getBASE() - 4); 
+                    	//Must decrement by 4 since we increment @ end of switch statement
+                    	//This ensures we branch and execute the specified instruction
                         break;
                         
                     case POP:
-                        m_registers[instruction[1]] = pop();
+                    	//The topmost entry on the stack is placed in the register specified by arg1.
+                    	//Then stack pointer is decremented to "remove" that item from the stack. 
+                    	//Helper method is called to perform the actual "pop"
+                    	m_registers[instruction[1]] = pop();
                         break;
                         
                     case PUSH:
-                        push(m_registers[instruction[1]]); 
+                    	//The stack pointer is incremented ("adding" a new entry to the stack).
+                    	//The value of this new entry is set equal to the value of the register 
+                    	//specified by arg1. Helped method is called to perform the actual "push"
+                    	push(m_registers[instruction[1]]); 
                         break;
                         
                     case LOAD:
-                        if(!isMemAddressInRange(m_registers[instruction[2]]+getBASE()))
-                            m_TH.interruptIllegalMemoryAccess(m_registers[instruction[2]]+getBASE());
-                        
-                            m_registers[instruction[1]] =  m_RAM.read(m_registers[instruction[2]] + getBASE());
+                    	//check that memory address is in range. If not, print error message
+                    	if(!isMemAddressInRange(m_registers[instruction[2]]+getBASE()))
+                    		m_TH.interruptIllegalMemoryAccess(instruction[2]+getBASE());
+                    	
+                    	//The value in RAM at the address specified by the register 
+                    	//specified by arg2 is placed into the register specified by arg1.
+                    		m_registers[instruction[1]] =  m_RAM.read(m_registers[instruction[2]] + getBASE());
                         break;
                         
                     case SAVE:
-                        if(!isMemAddressInRange(m_registers[instruction[2]]+getBASE()))
-                            m_TH.interruptIllegalMemoryAccess(m_registers[instruction[2]]+getBASE());
-
-                        m_RAM.write(m_registers[instruction[2]] + getBASE(), m_registers[instruction[1]]);
+                    	//check that memory address is in range. If not, print error message
+                    	if(!isMemAddressInRange(m_registers[instruction[2]]+getBASE()))
+                    		m_TH.interruptIllegalMemoryAccess(instruction[2]+getBASE());
+                    	
+                    	//The value of the register specified by arg1 is placed 
+                    	//in RAM at the address specified by the register specified by arg2.
+                    	m_RAM.write(m_registers[instruction[2]] + getBASE(), m_registers[instruction[1]]);
                         break;
                         
                     case TRAP:
-                        m_TH.systemCall();
-                        break;
+                    	
+                    	m_TH.systemCall();
+                    	break;
 
                     default:        // should never be reached
                         m_TH.interruptIllegalInstruction(instruction);
                         break;          
                 }//switch
-            
-                    setPC(getPC() + INSTRSIZE); //update program counter
-            } //while
+    		
+    			setPC(getPC() + INSTRSIZE); //update program counter
+    		} //while
 
     }//run
     
- 
+    
+    //======================================================================
+    //Callback Interface
+    //----------------------------------------------------------------------
+    /**
+     * TrapHandler
+     *
+     * This interface should be implemented by the operating system to allow the
+     * simulated CPU to generate hardware interrupts and system calls.
+     */
+    public interface TrapHandler
+    {
+        void interruptIllegalMemoryAccess(int addr);
+        void interruptDivideByZero();
+        void interruptIllegalInstruction(int[] instr);
+        void systemCall();
+    };//interface TrapHandler
+
+
+    
+
+    /**
+     * registerTrapHandler
+     *
+     * allows SOS to register itself as the trap handler 
+     */
+    public void registerTrapHandler(TrapHandler th)
+    {
+        m_TH = th;
+    }
+    
+    
+
     
 };//class CPU
+
+
+

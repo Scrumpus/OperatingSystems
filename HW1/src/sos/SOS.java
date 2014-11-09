@@ -8,7 +8,7 @@ import java.util.*;
  * the real-world processor in order to allow a focus on the essentials of
  * operating system design using a high level programming language.
  *
- * @authors harber14, hollandm15
+ * @authors harber14, schwalbe15
  */
 
 
